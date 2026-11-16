@@ -1,0 +1,449 @@
+================================================================================
+  COMPLETE CI/CD FLOW - JENKINS + DOCKER + ALLURE ARCHITECTURE
+================================================================================
+
+FLOW DIAGRAM:
+=============
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Developer Actions (Local)                                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Option 1: Push to Branch          Option 2: Push Tag                 │
+│  ────────────────────────          ──────────────────                 │
+│  git push origin main      OR      git tag v1.0.0                     │
+│                                    git push origin v1.0.0              │
+│                                                                         │
+└────────────────┬──────────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ GitHub/GitLab Webhook Trigger                                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Sends POST request to Jenkins with:                                    │
+│ - Repository URL                                                       │
+│ - Branch/Tag name                                                      │
+│ - Commit info                                                          │
+│ - Author info                                                          │
+└────────────────┬──────────────────────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ JENKINS PIPELINE TRIGGERED                                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Build Number: #123                                                      │
+│ Git Branch: feature/login                                               │
+│ Commit: abc1234def5678                                                  │
+└────────────────┬──────────────────────────────────────────────────────┘
+                 │
+     ┌───────────┼───────────┐
+     │           │           │
+     ▼           ▼           ▼
+  ┌──────────────────────────────────┐
+  │ 1. INITIALIZATION STAGE           │
+  ├──────────────────────────────────┤
+  │ ✓ Create directories:             │
+  │   - ${LOGS_DIR}                   │
+  │   - ${SCREENSHOTS_DIR}            │
+  │   - ${ALLURE_DIR}                 │
+  │ ✓ Log Git info                    │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 2. CHECKOUT STAGE                 │
+  ├──────────────────────────────────┤
+  │ ✓ git clone repo                  │
+  │ ✓ Checkout branch/tag             │
+  │ ✓ Log commit history              │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 3. BUILD DOCKER IMAGE             │
+  ├──────────────────────────────────┤
+  │ Docker Build Process:             │
+  │ ┌────────────────────────────────┤
+  │ │ FROM openjdk:17-jdk-slim       │
+  │ │ RUN apt-get install maven      │
+  │ │ RUN install Playwright deps    │
+  │ │ COPY project files             │
+  │ │ RUN mvn exec:java install      │
+  │ │     (Pre-install browsers)     │
+  │ │ ENTRYPOINT ["sh", "-c"]        │
+  │ └────────────────────────────────┤
+  │ Result: automation-tests:123      │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────────────────────────┐
+  │ 4. RUN TESTS IN DOCKER CONTAINER                    │
+  ├──────────────────────────────────────────────────────┤
+  │ docker run --rm                                       │
+  │   -v ${WORKSPACE}/target:/app/target                │
+  │   -v ${WORKSPACE}/allure-results:/app/allure-results│
+  │   -v ${LOGS_DIR}:/app/logs                          │
+  │   -e env=qa                                          │
+  │   -e browser=chromium                               │
+  │   -e headless=true                                  │
+  │   automation-tests:123                               │
+  │   mvn clean test \                                   │
+  │     -Denv=qa \                                       │
+  │     -Dbrowser=chromium \                            │
+  │     -Dheadless=true \                               │
+  │     -Dcucumber.filter.tags='@smoke'                 │
+  │                                                       │
+  │ Inside Container:                                    │
+  │ ┌──────────────────────────────────────────────────┤
+  │ │ 1. Maven compiles Java code                       │
+  │ │ 2. Cucumber parses .feature files                │
+  │ │ 3. For each scenario:                             │
+  │ │    a) @Before Hook executes                      │
+  │ │       - Launch Playwright browser                │
+  │ │    b) Step definitions run                        │
+  │ │       - Interact with page objects                │
+  │ │       - Page objects call Playwright             │
+  │ │    c) @After Hook executes                       │
+  │ │       - Close browser                             │
+  │ │       - If test failed:                           │
+  │ │         * Screenshot captured                    │
+  │ │         * Attached to Allure                     │
+  │ │ 4. Results written to:                            │
+  │ │    - /app/allure-results/*.json                  │
+  │ │    - /app/logs/test_execution.log                │
+  │ │    - /app/target/screenshots/*.png               │
+  │ │    - /app/target/surefire-reports/*.xml          │
+  │ └──────────────────────────────────────────────────┤
+  │                                                       │
+  │ Test Output Example:                                │
+  │ ─────────────────────────────────────────────────── │
+  │ Running Feature: login.feature                      │
+  │   Scenario: Valid login                             │
+  │   ✓ Given user on login page (500ms)               │
+  │   ✓ When user enters username (200ms)              │
+  │   ✓ When user enters password (200ms)              │
+  │   ✓ When user clicks login (1000ms)                │
+  │   ✓ Then inventory page visible (500ms)            │
+  │                                                      │
+  │   Scenario: Invalid password                        │
+  │   ✓ Given user on login page (500ms)               │
+  │   ✗ Then error shown (500ms)                       │
+  │     └─ Screenshot: /app/target/screenshots/        │
+  │           invalid_password_failure.png             │
+  │                                                      │
+  │ 45 tests | 43 passed | 2 failed | Duration: 120s   │
+  └────────────┬──────────────────────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 5. COLLECT ARTIFACTS              │
+  ├──────────────────────────────────┤
+  │ Copy from container to Jenkins:   │
+  │ ✓ allure-results/*.json           │
+  │ ✓ target/screenshots/*.png        │
+  │ ✓ logs/*.log                      │
+  │ ✓ surefire-reports/*.xml          │
+  │                                   │
+  │ Result Structure:                 │
+  │ workspace/                        │
+  │ ├── logs/                         │
+  │ │   ├── build_20250930_143000.log │
+  │ │   ├── test_execution_....log    │
+  │ │   └── failure_report_....log    │
+  │ ├── target/                       │
+  │ │   ├── screenshots/              │
+  │ │   │   ├── login_failure_1.png   │
+  │ │   │   └── checkout_failure_1.png│
+  │ │   └── surefire-reports/         │
+  │ │       └── TEST-*.xml            │
+  │ └── allure-results/               │
+  │     ├── 1234-5678.json            │
+  │     ├── 1234-5679.json            │
+  │     └── attachments/              │
+  │         └── screenshots/          │
+  │             ├── 001.png           │
+  │             └── 002.png           │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 6. GENERATE ALLURE REPORT         │
+  ├──────────────────────────────────┤
+  │ Process allure-results/ files:    │
+  │ ✓ Convert JSON to HTML            │
+  │ ✓ Embed screenshots               │
+  │ ✓ Generate charts/graphs          │
+  │ ✓ Create timeline view            │
+  │ ✓ Create behaviors view           │
+  │                                   │
+  │ Output:                           │
+  │ allure-report/index.html ◄────    │
+  │   ├── overview.html               │
+  │   ├── timeline.html               │
+  │   ├── behaviors.html              │
+  │   └── assets/                     │
+  │       ├── screenshots/            │
+  │       └── scripts/                │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 7. PUBLISH REPORTS TO JENKINS     │
+  ├──────────────────────────────────┤
+  │ ✓ Publish JUnit results           │
+  │ ✓ Publish HTML report (Allure)    │
+  │ ✓ Archive logs & screenshots      │
+  │                                   │
+  │ Jenkins Dashboard Shows:          │
+  │ Build #123                        │
+  │ ├── Console Output                │
+  │ ├── ✓ Allure Report (HTML link)   │
+  │ ├── Test Results (45/43/2)        │
+  │ └── Artifacts                     │
+  │     ├── logs/                     │
+  │     ├── screenshots/              │
+  │     └── reports/                  │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+  ┌──────────────────────────────────┐
+  │ 8. POST BUILD ACTIONS             │
+  ├──────────────────────────────────┤
+  │ If BUILD SUCCESSFUL:              │
+  │ ✓ Success message logged          │
+  │ ✓ Reports archived                │
+  │ ✓ Docker image cleaned up         │
+  │                                   │
+  │ If BUILD FAILED:                  │
+  │ ✗ Generate failure report         │
+  │ ✗ Collect error logs              │
+  │ ✗ List failure screenshots        │
+  │ ✗ Send email notification with:   │
+  │   - Build number                  │
+  │   - Failed test names             │
+  │   - Git info                      │
+  │   - Build URL                     │
+  │   - Allure report link            │
+  │ ✗ Notify:                         │
+  │   - Commit author                 │
+  │   - PR requestor                  │
+  │   - Previous build breaker        │
+  │ ✗ Docker image cleaned up         │
+  └────────────┬─────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ DEVELOPER RECEIVES NOTIFICATION                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│ Email (if tests failed):                                               │
+│ ───────────────────────────                                            │
+│ Subject: Automation Tests Failed - job-name #123                       │
+│                                                                         │
+│ Body:                                                                   │
+│ - Build #123 failed                                                    │
+│ - Branch: feature/login                                                │
+│ - Commit: abc1234                                                      │
+│ - Environment: qa, Browser: chromium                                   │
+│ - Allure Report: [LINK] ◄── CLICK TO VIEW FAILURES                    │
+│ - Build Console: [LINK] ◄── CLICK TO VIEW LOGS                        │
+│                                                                         │
+│ In Allure Report:                                                       │
+│ ─────────────────                                                      │
+│ Overview Tab:                                                           │
+│ - 45 total tests                                                        │
+│ - 43 passed (95%)                                                       │
+│ - 2 failed (5%)                                                         │
+│ - Duration: 2m 15s                                                      │
+│                                                                         │
+│ Failures Tab:                                                           │
+│ - Test 1: login_invalid_password                                       │
+│   └─ Screenshot attached: invalid_password.png ◄── SEE EXACT FAILURE   │
+│   └─ Error: "Expected error message not found"                         │
+│   └─ Step definitions log attached                                     │
+│                                                                         │
+│ - Test 2: checkout_total_calculation                                   │
+│   └─ Screenshot attached: checkout_failure.png                         │
+│   └─ Error: "Total mismatch: expected 100 got 95"                      │
+│   └─ Step definitions log attached                                     │
+│                                                                         │
+│ Behaviors Tab:                                                          │
+│ - Stories/Features listed with results                                 │
+│                                                                         │
+│ Timeline Tab:                                                           │
+│ - Execution timeline showing which tests ran when                      │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+WHAT GETS CAPTURED:
+===================
+
+1. LOGS
+   ├── build_TIMESTAMP.log
+   │   └── Build initialization, git info
+   ├── docker_build_TIMESTAMP.log
+   │   └── Docker image build output
+   ├── test_execution_TIMESTAMP.log
+   │   └── Every step definition execution
+   ├── allure_TIMESTAMP.log
+   │   └── Allure report generation
+   └── failure_report_TIMESTAMP.log
+       └── Details of failed tests
+
+2. SCREENSHOTS (On Failure)
+   ├── login_invalid_password_failure.png
+   ├── checkout_total_mismatch_failure.png
+   └── ... (one per failed test)
+
+3. TEST REPORTS
+   ├── surefire-reports/TEST-*.xml
+   │   └── JUnit format (Jenkins reads this)
+   └── allure-results/*.json
+       └── Allure format (detailed test data)
+
+4. ALLURE RESULTS
+   └── Converted to HTML with:
+       ├── Screenshots embedded
+       ├── Execution timeline
+       ├── Test history
+       ├── Test categorization
+       └── Interactive dashboards
+
+
+KEY FEATURES:
+=============
+
+✓ BRANCH TRIGGER
+  - Any push to any branch triggers build
+  - Uses parameters if manual trigger
+
+✓ TAG TRIGGER
+  - Tag push triggers build
+  - Useful for release testing
+  Example: git tag v1.0.0 && git push origin v1.0.0
+
+✓ PARAMETERIZED
+  - Environment selection: qa, dev, staging, prod
+  - Browser selection: chromium, firefox, webkit
+  - Headless mode: true/false
+  - Test tag filter: @smoke, @regression, @sanity
+
+✓ CONTAINERIZED
+  - Docker ensures consistent environment
+  - Same behavior local vs CI
+  - Easy scale with multiple Jenkins agents
+
+✓ SCREENSHOT CAPTURE
+  - Automatic on test failure
+  - Embedded in Allure report
+  - Easy visual debugging
+
+✓ COMPREHENSIVE LOGGING
+  - Every step logged
+  - Docker output captured
+  - Build process transparent
+
+✓ EMAIL NOTIFICATIONS
+  - Sent on test failure
+  - Includes clickable links
+  - Sent to relevant people
+
+✓ ALLURE REPORTS
+  - Rich visual reports
+  - Interactive UI
+  - History tracking
+  - Screenshots embedded
+
+✓ PARALLEL EXECUTION
+  - 4 tests run simultaneously (configurable)
+  - Reduces build time
+  - Configured in junit-platform.properties
+
+
+FILES CREATED:
+==============
+
+1. Dockerfile
+   └── Containerizes test framework
+
+2. Jenkinsfile
+   └── Complete CI/CD pipeline definition
+
+3. .dockerignore
+   └── Optimizes Docker builds
+
+4. junit-platform.properties
+   └── JUnit/Cucumber configuration
+
+5. allure.properties
+   └── Allure report configuration
+
+6. .gitignore
+   └── Git exclusions
+
+7. CI_CD_SETUP.md
+   └── Detailed setup guide
+
+8. JENKINS_QUICK_START.md
+   └── Quick reference guide
+
+9. CI_CD_ARCHITECTURE.txt
+   └── This file - architecture overview
+
+
+NEXT STEPS:
+===========
+
+1. Install Jenkins & Docker on server
+2. Install Jenkins plugins
+3. Configure GitHub/GitLab webhook
+4. Create Jenkins pipeline job pointing to Jenkinsfile
+5. Make a test commit
+6. Watch Jenkins run automatically
+7. View Allure report in Jenkins dashboard
+
+
+TROUBLESHOOTING:
+================
+
+Build won't trigger?
+  → Check webhook in GitHub/GitLab settings
+  → Verify response code is 200
+
+Docker build fails?
+  → Run manually: docker build -t test:dev .
+  → Check Docker logs for missing dependencies
+
+Tests timeout?
+  → Increase timeout in Jenkinsfile
+  → Check if tests are slow locally too
+
+No screenshots captured?
+  → Verify @After hook in Hooks.java
+  → Check test is actually failing
+
+Allure report empty?
+  → Check allure-results/ has .json files
+  → Run: docker exec container ls /app/allure-results/
+
+Email not sent?
+  → Check email config in Manage Jenkins → Configure System
+  → Verify SMTP credentials
+
+
+SUCCESS METRICS:
+================
+
+✓ Build triggers automatically on push
+✓ Docker image builds successfully
+✓ Tests execute in container
+✓ Screenshots captured on failures
+✓ Allure report generated with embedded screenshots
+✓ Reports visible in Jenkins dashboard
+✓ Email notifications received on failures
+✓ Development team can debug from Allure report
+✓ Full execution logs available
+✓ Build repeatable and consistent
+
+================================================================================

@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+*.iml
+
+# Build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+._.DS_Store
+
+# Node (if any)
+node_modules/
+npm-debug.log
+
+# Maven
+.m2/
+
+# Test artifacts (will be mounted as volumes)
+allure-results/
+allure-report/
+
+# Jenkins
+.jenkins/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+*.md

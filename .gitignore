@@ -1,0 +1,111 @@
+# Maven
+target/
+# Machine-specific Maven JVM args (local truststore path for Zscaler, etc.)
+.mvn/jvm.config
+*.jar
+*.war
+*.ear
+*.zip
+.m2/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+
+# Eclipse
+.classpath
+.project
+.settings/
+.metadata/
+
+# NetBeans
+nbproject/
+nb-configuration.xml
+
+# IntelliJ
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Test Reports and Results
+allure-results/
+allure-report/
+test-output/
+surefire-reports/
+target/surefire-reports/
+target/screenshots/
+
+# Build output
+build/
+bin/
+out/
+
+# OS Files
+.DS_Store
+Thumbs.db
+._.DS_Store
+
+# Jenkins
+.jenkins/
+workspace/
+
+# Node (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Gradle (if any)
+.gradle/
+gradle/
+
+# Docker volumes
+.docker/
+
+# Environment files
+.env
+.env.local
+*.properties.local
+config/*.local.properties
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.tmp/
+
+# IDE specific
+.vscode/settings.json
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+
+# Browser data
+.playwright/
+browser-data/
+
+# Screenshots (unless committing test data)
+# Uncomment if you want to ignore all screenshots
+# target/screenshots/
+
+# CI/CD
+.circleci/
+.github/workflows/
+.gitlab-ci/
+
+# Misc
+.DS_Store
+*.class
+*.exe
+*.o
+*.so
